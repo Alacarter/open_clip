@@ -1,13 +1,11 @@
 from collections import OrderedDict
 from typing import Tuple, Union
 
-import os
-import json
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-
+from .auxilary import *
 
 class Bottleneck(nn.Module):
     expansion = 4
@@ -69,7 +67,7 @@ class AttentionPool2d(nn.Module):
         x = x.reshape(x.shape[0], x.shape[1], x.shape[2] * x.shape[3]).permute(2, 0, 1)  # NCHW -> (HW)NC
         x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (HW+1)NC
         x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (HW+1)NC
-        x, _ = F.multi_head_attention_forward(
+        x, _ = multi_head_attention_forward(
             query=x, key=x, value=x,
             embed_dim_to_check=x.shape[-1],
             num_heads=self.num_heads,
@@ -170,7 +168,7 @@ class ResidualAttentionBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None):
         super().__init__()
 
-        self.attn = nn.MultiheadAttention(d_model, n_head)
+        self.attn = MultiheadAttention(d_model, n_head)
         self.ln_1 = LayerNorm(d_model)
         self.mlp = nn.Sequential(OrderedDict([
             ("c_fc", nn.Linear(d_model, d_model * 4)),
@@ -180,9 +178,19 @@ class ResidualAttentionBlock(nn.Module):
         self.ln_2 = LayerNorm(d_model)
         self.attn_mask = attn_mask
 
+        self.attn_probs = None
+        self.attn_grad = None
+
+    def set_attn_probs(self, attn_probs):
+        self.attn_probs = attn_probs
+
+    def set_attn_grad(self, attn_grad):
+        self.attn_grad = attn_grad
+
     def attention(self, x: torch.Tensor):
         self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
-        return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
+        return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask, attention_probs_forward_hook=self.set_attn_probs,
+                         attention_probs_backwards_hook=self.set_attn_grad)[0]
 
     def forward(self, x: torch.Tensor):
         x = x + self.attention(self.ln_1(x))
@@ -297,7 +305,6 @@ class CLIP(nn.Module):
     def initialize_parameters(self):
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
         if isinstance(self.visual, ModifiedResNet):
             if self.visual.attnpool is not None:
@@ -354,6 +361,22 @@ class CLIP(nn.Module):
 
         return x
 
+    # def forward(self, image, text):
+    #     image_features = self.encode_image(image)
+    #     text_features = self.encode_text(text)
+
+    #     # normalized features
+    #     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+    #     text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+    #     # cosine similarity as logits
+    #     logit_scale = self.logit_scale.exp()
+    #     logits_per_image = logit_scale * image_features @ text_features.t()
+    #     logits_per_text = logit_scale * text_features @ image_features.t()
+
+    #     # shape = [global_batch_size, global_batch_size]
+    #     return logits_per_image, logits_per_text
+
     def forward(self, image, text):
         if image is None:
             return self.encode_text(text)
@@ -364,7 +387,6 @@ class CLIP(nn.Module):
 
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-        
         return image_features, text_features, self.logit_scale.exp()
 
 
@@ -377,7 +399,7 @@ def convert_weights(model: nn.Module):
             if l.bias is not None:
                 l.bias.data = l.bias.data.half()
 
-        if isinstance(l, nn.MultiheadAttention):
+        if isinstance(l, MultiheadAttention):
             for attr in [*[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]], "in_proj_bias", "bias_k", "bias_v"]:
                 tensor = getattr(l, attr)
                 if tensor is not None:

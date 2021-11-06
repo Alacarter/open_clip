@@ -69,6 +69,9 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
             args.model,
             jit=False,
             is_train=True)
+        # model, preprocess = load(args.model, jit=False)
+        # preprocess_train = preprocess
+        # preprocess_val = preprocess
     else:
         model_config_file = Path(__file__).parent / f"model_configs/{args.model.replace('/', '-')}.json"
         print('Loading model from', model_config_file)

@@ -195,6 +195,15 @@ def parse_args():
         type=lambda x: [int(a) for a in x.split(",")],
         help="In DP, which GPUs to use for multigpu training",
     )
+    # Transformer-MM-Explainability
+    parser.add_argument("--num-evals", type=int, default=0)
+    # Below: Saliency-like filepaths.
+    parser.add_argument("--eval-val-file", type=str, default=None)
+    parser.add_argument("--eval-test-file", type=str, default=None)
+    parser.add_argument("--eval-annotations-path", type=str, default=None)
+
+    parser.add_argument("--eval-image-dir", type=str, default=None)
+    parser.add_argument("--eval-output-dir", type=str, default="output_heatmaps")
     args = parser.parse_args()
     args.aggregate = not args.skip_aggregate
 

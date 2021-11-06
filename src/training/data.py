@@ -28,9 +28,10 @@ from clip.clip import tokenize
 
 
 class CsvDataset(Dataset):
-    def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t"):
+    def __init__(self, input_filename, transforms, img_key, caption_key, sep=","):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
+        print(df.columns)
 
         self.images = df[img_key].tolist()
         self.captions = df[caption_key].tolist()
