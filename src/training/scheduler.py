@@ -7,6 +7,12 @@ def assign_learning_rate(optimizer, new_lr):
 def _warmup_lr(base_lr, warmup_length, step):
     return base_lr * (step + 1) / warmup_length
 
+def constant_lr(optimizer, base_lr):
+    def _lr(step):
+        assign_learning_rate(optimizer, base_lr)
+        return base_lr
+    return _lr
+
 def cosine_lr(optimizer, base_lr, warmup_length, steps):
     def _lr_adjuster(step):
         if step < warmup_length:

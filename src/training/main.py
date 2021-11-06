@@ -20,7 +20,7 @@ from training.train import train, evaluate
 from training.data import get_data
 from training.params import parse_args
 from training.logger import setup_primary_logging, setup_worker_logging
-from training.scheduler import cosine_lr
+from training.scheduler import cosine_lr, constant_lr
 
 # Used by https://github.com/openai/CLIP/issues/83 but not below.
 # Keeping it incase needed.
@@ -132,7 +132,12 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
             eps=args.eps,
         )
         total_steps = data["train"].dataloader.num_batches * args.epochs
-        scheduler = cosine_lr(optimizer, args.lr, args.warmup, total_steps)
+        if args.lr_schedule == "cosine":
+            scheduler = cosine_lr(optimizer, args.lr, args.warmup, total_steps)
+        elif args.lr_schedule == "constant":
+            scheduler = constant_lr(optimizer, args.lr)
+        else:
+            raise NotImplementedError
 
     scaler = GradScaler() if args.precision == "amp" else None
 

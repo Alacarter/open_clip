@@ -83,6 +83,13 @@ def parse_args():
         "--epochs", type=int, default=32, help="Number of epochs to train for."
     )
     parser.add_argument("--lr", type=float, default=None, help="Learning rate.")
+    parser.add_argument(
+        "--lr-schedule",
+        type=str,
+        choices=['cosine', 'constant'],
+        default="cosine",
+        help="Learning rate schedule."
+    )
     parser.add_argument("--beta1", type=float, default=None, help="Adam beta 1.")
     parser.add_argument("--beta2", type=float, default=None, help="Adam beta 2.")
     parser.add_argument("--eps", type=float, default=None, help="Adam epsilon.")
