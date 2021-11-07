@@ -6,7 +6,15 @@ from typing import Union, List
 
 import torch
 from PIL import Image
-from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize, RandomResizedCrop
+from torchvision.transforms import (
+    Compose,
+    Resize,
+    CenterCrop,
+    ToTensor,
+    Normalize,
+    RandomResizedCrop,
+    ColorJitter,
+)
 from tqdm import tqdm
 
 from .model import build_model
@@ -57,15 +65,25 @@ def _download(url: str, root: str = os.path.expanduser("~/.cache/clip")):
 def _convert_to_rgb(image):
     return image.convert('RGB')
 
-def _transform(n_px: int, is_train: bool):
+def _transform(n_px: int, is_train: bool, color_jitter: bool):
     normalize = Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
     if is_train:
-        return Compose([
+        transforms_list = [
             RandomResizedCrop(n_px, scale=(0.9, 1.0), interpolation=Image.BICUBIC),
             _convert_to_rgb,
             ToTensor(),
             normalize,
-        ])
+        ]
+        if color_jitter:
+            print("color_jitter is on.")
+            transforms_list = [ColorJitter(
+                brightness=0.5,
+                contrast=0.5,
+                saturation=1.0,
+                hue=0.5
+            )] + transforms_list
+        print("transforms_list", transforms_list)
+        return Compose(transforms_list)
     else:
         return Compose([
             Resize(n_px, interpolation=Image.BICUBIC),
@@ -80,7 +98,7 @@ def available_models() -> List[str]:
     return list(_MODELS.keys())
 
 
-def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit=True, is_train=False, pretrained=True):
+def load(name: str, color_jitter: bool, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit=True, is_train=False, pretrained=True):
     """Load a CLIP model
     Parameters
     ----------
@@ -125,8 +143,8 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
         if str(device) == "cpu":
             model.float()
         return model, \
-               _transform(model.visual.input_resolution, is_train=True), \
-               _transform(model.visual.input_resolution, is_train=False)
+               _transform(model.visual.input_resolution, is_train=True, color_jitter=color_jitter), \
+               _transform(model.visual.input_resolution, is_train=False, color_jitter=False)
 
     # patch the device names
     device_holder = torch.jit.trace(lambda: torch.ones([]).to(torch.device(device)), example_inputs=[])

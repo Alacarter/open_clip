@@ -67,6 +67,7 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
     if args.openai_pretrained:
         model, preprocess_train, preprocess_val = load(
             args.model,
+            args.color_jitter,
             jit=False,
             is_train=True)
         # model, preprocess = load(args.model, jit=False)
@@ -80,8 +81,8 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
             model_info = json.load(f)
         model = CLIP(**model_info)
         convert_weights(model)
-        preprocess_train = _transform(model.visual.input_resolution, is_train=True)
-        preprocess_val = _transform(model.visual.input_resolution, is_train=False)
+        preprocess_train = _transform(model.visual.input_resolution, is_train=True, color_jitter=args.color_jitter)
+        preprocess_val = _transform(model.visual.input_resolution, is_train=False, color_jitter=False)
 
 
     # See https://discuss.pytorch.org/t/valueerror-attemting-to-unscale-fp16-gradients/81372

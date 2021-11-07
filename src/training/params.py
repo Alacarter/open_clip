@@ -202,6 +202,12 @@ def parse_args():
         type=lambda x: [int(a) for a in x.split(",")],
         help="In DP, which GPUs to use for multigpu training",
     )
+    parser.add_argument(
+        "--color-jitter",
+        default=False,
+        action="store_true",
+        help="Add ColorJitter during training.",
+    )
     # Transformer-MM-Explainability
     parser.add_argument("--num-evals", type=int, default=0)
     # Below: Saliency-like filepaths.
