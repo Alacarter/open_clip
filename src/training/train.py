@@ -13,7 +13,7 @@ from .zero_shot import zero_shot_eval
 
 import sys
 import pdb
-import wandb
+# import wandb
 
 import logging
 
