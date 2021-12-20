@@ -175,7 +175,7 @@ class Vocab(Vocabulary):
 class CustomTokenizer(object):
     def __init__(self):
         self.vocab = Vocab([], unk_cutoff=1)
-        vocab_path = "custom_vocab_20211219.txt"
+        vocab_path = "/scratch/cluster/albertyu/datasets/202110260345_fruitbot_image_instruction/20211026_train_20211220_vocab.txt"
         with open(vocab_path, "r") as f:
             vocab_list = f.readlines()
         vocab_list = [basic_clean(vocab) for vocab in vocab_list]
