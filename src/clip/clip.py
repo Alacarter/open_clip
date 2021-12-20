@@ -22,7 +22,7 @@ from .model import build_model
 USE_CUSTOM_TOKENIZER = True
 
 if USE_CUSTOM_TOKENIZER:
-    from .simple_tokenizer import CustomTokenizer as _Tokenizer
+    from .tokenizer import CustomTokenizer as _Tokenizer
 else:
     from .simple_tokenizer import SimpleTokenizer as _Tokenizer
 

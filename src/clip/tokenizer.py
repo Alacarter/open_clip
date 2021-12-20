@@ -149,18 +149,18 @@ class Vocab(Vocabulary):
         super().update(*args, **kwargs)
         self.tokens = ['<PAD>', '<UNK>', '<start_of_text>', '<end_of_text>'] + list(self.counts.keys())
 
-    def tokens_to_idx(self, text):
+    def tokens_to_idx(self, text, output_list=True):
         tokens = text.split(" ")
-        if len(tokens) == 1:
+        if len(tokens) == 1 and not output_list:
             token = tokens[0]
             if token in self.tokens:
                 return self.tokens.index(token)
             else:
                 return self.tokens.index('<UNK>')
-        elif len(tokens) > 1:
+        else:
             idxs = []
             for token in tokens:
-                idx = self.tokens_to_idx(token)
+                idx = self.tokens_to_idx(token, output_list=False)
                 idxs.append(idx)
             return idxs
 
@@ -180,8 +180,8 @@ class CustomTokenizer(object):
             vocab_list = f.readlines()
         vocab_list = [basic_clean(vocab) for vocab in vocab_list]
         self.vocab.update(vocab_list)
-        self.sot_token = self.vocab.tokens_to_idx('<start_of_text>')
-        self.eot_token = self.vocab.tokens_to_idx('<end_of_text>')
+        self.sot_token = self.vocab.tokens_to_idx('<start_of_text>')[0]
+        self.eot_token = self.vocab.tokens_to_idx('<end_of_text>')[0]
 
     def encode(self, text):
         return self.vocab.tokens_to_idx(text)
@@ -190,10 +190,10 @@ class CustomTokenizer(object):
         return self.vocab.idxs_to_tokens(tokens)
 
 
-if __name__ == "__main__":
-    tok = SimpleTokenizer()
-    tok = CustomTokenizer()
-    import ipdb; ipdb.set_trace()
-    print(tok.encode("banana apple wall afdsaf"))
-    # print(tok.encoder)
-    # print("sot", sot_token, "eot", eot_token)
+# if __name__ == "__main__":
+#     tok = SimpleTokenizer()
+#     tok = CustomTokenizer()
+#     import ipdb; ipdb.set_trace()
+#     print(tok.encode("banana apple wall afdsaf"))
+#     # print(tok.encoder)
+#     # print("sot", sot_token, "eot", eot_token)

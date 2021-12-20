@@ -290,7 +290,7 @@ def main():
 
     # Set multiprocessing type to spawn.
     # This is important for logging to work with multiprocessing.
-    torch.multiprocessing.set_start_method("spawn")
+    torch.multiprocessing.set_start_method("spawn", force=True)
 
     # Set logger
     args.log_level = logging.DEBUG if args.debug else logging.INFO

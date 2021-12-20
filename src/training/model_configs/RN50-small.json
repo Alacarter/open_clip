@@ -10,7 +10,7 @@
     "vision_width": 16,
     "vision_patch_size": null,
     "context_length": 77,
-    "vocab_size": 49408,
+    "vocab_size": 18,
     "transformer_width": 64,
     "transformer_heads": 4,
     "transformer_layers": 4
