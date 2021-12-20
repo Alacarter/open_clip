@@ -18,7 +18,13 @@ from torchvision.transforms import (
 from tqdm import tqdm
 
 from .model import build_model
-from .simple_tokenizer import SimpleTokenizer as _Tokenizer
+
+USE_CUSTOM_TOKENIZER = True
+
+if USE_CUSTOM_TOKENIZER:
+    from .simple_tokenizer import CustomTokenizer as _Tokenizer
+else:
+    from .simple_tokenizer import SimpleTokenizer as _Tokenizer
 
 __all__ = ["available_models", "load", "tokenize"]
 _tokenizer = _Tokenizer()
@@ -193,8 +199,9 @@ def load(name: str, color_jitter: bool, device: Union[str, torch.device] = "cuda
            _transform(model.input_resolution.item(), is_train=False)
 
 
-def tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.LongTensor:
+def clip_tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.LongTensor:
     """
+    Used to be called `tokenize`
     Returns the tokenized representation of given input string(s)
 
     Parameters
@@ -223,3 +230,39 @@ def tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.Lo
         result[i, :len(tokens)] = torch.tensor(tokens)
 
     return result
+
+def custom_tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.LongTensor:
+    """
+    Modified version of `clip_tokenize`
+    Returns the tokenized representation of given input string(s)
+
+    Parameters
+    ----------
+    texts : Union[str, List[str]]
+        An input string or a list of input strings to tokenize
+
+    context_length : int
+        The context length to use; all CLIP models use 77 as the context length
+
+    Returns
+    -------
+    A two-dimensional tensor containing the resulting tokens, shape = [number of input strings, context_length]
+    """
+    if isinstance(texts, str):
+        texts = [texts]
+
+    all_tokens = [[_tokenizer.sot_token] + _tokenizer.encode(text) + [_tokenizer.eot_token] for text in texts]
+    result = torch.zeros(len(all_tokens), context_length, dtype=torch.long)
+
+    for i, tokens in enumerate(all_tokens):
+        if len(tokens) > context_length:
+            raise RuntimeError(f"Input {texts[i]} is too long for context length {context_length}")
+        result[i, :len(tokens)] = torch.tensor(tokens)
+
+    return result
+
+# Redefine the tokenize function.
+if USE_CUSTOM_TOKENIZER:
+    tokenize = custom_tokenize
+else:
+    tokenize = clip_tokenize

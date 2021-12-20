@@ -180,6 +180,8 @@ class CustomTokenizer(object):
             vocab_list = f.readlines()
         vocab_list = [basic_clean(vocab) for vocab in vocab_list]
         self.vocab.update(vocab_list)
+        self.sot_token = self.vocab.tokens_to_idx('<start_of_text>')
+        self.eot_token = self.vocab.tokens_to_idx('<end_of_text>')
 
     def encode(self, text):
         return self.vocab.tokens_to_idx(text)
