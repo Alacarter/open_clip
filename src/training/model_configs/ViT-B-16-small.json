@@ -3,7 +3,7 @@
     "image_resolution": 64,
     "vision_layers": 6,
     "vision_width": 256,
-    "vision_patch_size": 16,
+    "vision_patch_size": 4,
     "context_length": 77,
     "vocab_size": 18,
     "transformer_width": 64,
