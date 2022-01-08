@@ -229,11 +229,12 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
 
         optimizer.zero_grad()
 
-        student_images, texts, teacher_images = batch
+        teacher_images, teacher_texts, student_images, student_texts = batch
         if args.gpu is not None:
-            student_images = student_images.cuda(args.gpu, non_blocking=True)
-            texts = texts.cuda(args.gpu, non_blocking=True)
             teacher_images = teacher_images.cuda(args.gpu, non_blocking=True)
+            teacher_texts = teacher_texts.cuda(args.gpu, non_blocking=True)
+            student_images = student_images.cuda(args.gpu, non_blocking=True)
+            student_texts = student_texts.cuda(args.gpu, non_blocking=True)
 
         data_time = time.time() - end
 

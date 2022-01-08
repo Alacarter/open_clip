@@ -24,7 +24,9 @@ import webdataset as wds
 
 
 
-from clip.clip import tokenize
+from clip.clip import (
+    tokenize, clip_tokenize, custom_tokenize
+)
 
 
 class CsvDataset(Dataset):
@@ -62,10 +64,11 @@ class CsvDatasetTwoTransforms(Dataset):
         return len(self.captions)
 
     def __getitem__(self, idx):
-        student_transformed_images = self.student_transforms(Image.open(str(self.images[idx])))
         teacher_transformed_images = self.teacher_transforms(Image.open(str(self.images[idx])))
-        texts = tokenize([str(self.captions[idx])])[0]
-        return student_transformed_images, texts, teacher_transformed_images
+        teacher_texts = clip_tokenize([str(self.captions[idx])])[0]
+        student_transformed_images = self.student_transforms(Image.open(str(self.images[idx])))
+        student_texts = custom_tokenize([str(self.captions[idx])])[0]
+        return teacher_transformed_images, teacher_texts, student_transformed_images, student_texts
 
 @dataclass
 class DataInfo:

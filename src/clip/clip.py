@@ -22,12 +22,14 @@ from .model import build_model
 USE_CUSTOM_TOKENIZER = True
 
 if USE_CUSTOM_TOKENIZER:
-    from .tokenizer import CustomTokenizer as _Tokenizer
+    from .tokenizer import CustomTokenizer
 else:
-    from .simple_tokenizer import SimpleTokenizer as _Tokenizer
+    from .simple_tokenizer import SimpleTokenizer
 
 __all__ = ["available_models", "load", "tokenize"]
-_tokenizer = _Tokenizer()
+# _tokenizer = _Tokenizer()
+custom_tokenizer = CustomTokenizer()
+clip_tokenizer = SimpleTokenizer()
 
 _MODELS = {
     "RN50": "https://openaipublic.azureedge.net/clip/models/afeb0e10f9e5a86da6080e35cf09123aca3b358a0c3e3b6c78a7b63bc04b6762/RN50.pt",
@@ -199,7 +201,7 @@ def load(name: str, color_jitter: bool, device: Union[str, torch.device] = "cuda
            _transform(model.input_resolution.item(), is_train=False)
 
 
-def clip_tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.LongTensor:
+def clip_tokenize(texts: Union[str, List[str]], context_length: int = 77, _tokenizer=clip_tokenizer) -> torch.LongTensor:
     """
     Used to be called `tokenize`
     Returns the tokenized representation of given input string(s)
@@ -231,7 +233,7 @@ def clip_tokenize(texts: Union[str, List[str]], context_length: int = 77) -> tor
 
     return result
 
-def custom_tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.LongTensor:
+def custom_tokenize(texts: Union[str, List[str]], context_length: int = 77, _tokenizer=custom_tokenizer) -> torch.LongTensor:
     """
     Modified version of `clip_tokenize`
     Returns the tokenized representation of given input string(s)
