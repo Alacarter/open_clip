@@ -33,6 +33,56 @@ def convert_models_to_fp32(model):
 def is_master(args):
     return (not args.distributed) or args.gpu == 0 or args.dp
 
+def instantiate_model_wrapper(model):
+    # Used only in `main_worker`
+    # See https://discuss.pytorch.org/t/valueerror-attemting-to-unscale-fp16-gradients/81372
+    if args.precision == "amp" or args.precision == "fp32" or args.gpu is None:
+        convert_models_to_fp32(model)
+
+    if not torch.cuda.is_available():
+        model.float()
+        logging.warning("using CPU, this will be slow")
+    else:
+        model.cuda(args.gpu)
+        if args.precision == "fp16":
+            convert_weights(model)
+        # Previously batch size and workers were global and not per GPU.
+        # args.batch_size = args.batch_size / ngpus_per_node)
+        # args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+
+        if args.distributed and args.use_bn_sync:
+            model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        if args.distributed:
+            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        if args.dp:
+            model = torch.nn.DataParallel(model, device_ids=args.multigpu)
+
+        if args.precision == "fp16":
+            convert_weights(model)
+    return model
+
+def load_pretrained_checkpoint(checkpoint_path, model, optimizer, args):
+    if os.path.isfile(checkpoint_path):
+        if args.gpu is None:
+            checkpoint = torch.load(checkpoint_path)
+        else:
+            # Map model to be loaded to specified single gpu.
+            loc = "cuda:{}".format(args.gpu)
+            checkpoint = torch.load(checkpoint_path, map_location=loc)
+        start_epoch = checkpoint["epoch"]
+        sd = checkpoint["state_dict"]
+        if not args.distributed and next(iter(sd.items()))[0].startswith('module'):
+            sd = {k[len('module.'):]: v for k, v in sd.items()}
+        model.load_state_dict(sd)
+        if optimizer is not None:
+            optimizer.load_state_dict(checkpoint["optimizer"])
+        logging.info(
+            f"=> loaded checkpoint '{checkpoint_path}' (epoch {checkpoint['epoch']})"
+        )
+    else:
+        logging.info("=> no checkpoint found at '{}'".format(checkpoint_path))
+    return start_epoch
+
 def main_worker(gpu, ngpus_per_node, log_queue, args):
     args.gpu = gpu
     args.rank = gpu
@@ -73,6 +123,19 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         # model, preprocess = load(args.model, jit=False)
         # preprocess_train = preprocess
         # preprocess_val = preprocess
+    elif args.distillation:
+        teacher_model, teacher_preprocess_train, teacher_preprocess_val = load(
+            args.teacher_model_ckpt,
+            args.color_jitter,
+            jit=False,
+            is_train=True,
+        )
+        student_model, student_preprocess_train, student_preprocess_val = load(
+            args.student_model_ckpt,
+            args.color_jitter,
+            jit=False,
+            is_train=True,
+        )
     else:
         model_config_file = Path(__file__).parent / f"model_configs/{args.model.replace('/', '-')}.json"
         print('Loading model from', model_config_file)
@@ -84,33 +147,15 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         preprocess_train = _transform(model.visual.input_resolution, is_train=True, color_jitter=args.color_jitter)
         preprocess_val = _transform(model.visual.input_resolution, is_train=False, color_jitter=False)
 
-
-    # See https://discuss.pytorch.org/t/valueerror-attemting-to-unscale-fp16-gradients/81372
-    if args.precision == "amp" or args.precision == "fp32" or args.gpu is None:
-        convert_models_to_fp32(model)
-
-    if not torch.cuda.is_available():
-        model.float()
-        logging.warning("using CPU, this will be slow")
+    if args.distillation:
+        # Does this need to be done for the teacher model?
+        teacher_model = instantiate_model_wrapper(teacher_model)
+        # From here on, `student_model` is called `model`
+        model = instantiate_model_wrapper(student_model)
+        data = get_data(args, (student_preprocess_train, student_preprocess_val))
     else:
-        model.cuda(args.gpu)
-        if args.precision == "fp16":
-            convert_weights(model)
-        # Previously batch size and workers were global and not per GPU.
-        # args.batch_size = args.batch_size / ngpus_per_node)
-        # args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-
-        if args.distributed and args.use_bn_sync:
-            model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-        if args.distributed:
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
-        if args.dp:
-            model = torch.nn.DataParallel(model, device_ids=args.multigpu)
-
-        if args.precision == "fp16":
-            convert_weights(model)
-
-    data = get_data(args, (preprocess_train, preprocess_val))
+        model = instantiate_model_wrapper(model)
+        data = get_data(args, (preprocess_train, preprocess_val))
 
     exclude = lambda n : "bn" in n or "ln" in n or "bias" in n or 'logit_scale' in n
     include = lambda n : not exclude(n)
@@ -145,25 +190,9 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
     # optionally resume from a checkpoint
     start_epoch = 0
     if args.resume is not None:
-        if os.path.isfile(args.resume):
-            if args.gpu is None:
-                checkpoint = torch.load(args.resume)
-            else:
-                # Map model to be loaded to specified single gpu.
-                loc = "cuda:{}".format(args.gpu)
-                checkpoint = torch.load(args.resume, map_location=loc)
-            start_epoch = checkpoint["epoch"]
-            sd = checkpoint["state_dict"]
-            if not args.distributed and next(iter(sd.items()))[0].startswith('module'):
-                sd = {k[len('module.'):]: v for k, v in sd.items()}
-            model.load_state_dict(sd)
-            if optimizer is not None:
-                optimizer.load_state_dict(checkpoint["optimizer"])
-            logging.info(
-                f"=> loaded checkpoint '{args.resume}' (epoch {checkpoint['epoch']})"
-            )
-        else:
-            logging.info("=> no checkpoint found at '{}'".format(args.resume))
+        start_epoch = load_pretrained_checkpoint(args.resume, model, optimizer, args)
+    elif args.distillation:
+        start_epoch = load_pretrained_checkpoint(args.student_model_ckpt, model, optimizer, args)
 
     cudnn.benchmark = True
     cudnn.deterministic = False
@@ -203,7 +232,10 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
     for epoch in range(start_epoch, args.epochs):
         if args.gpu == 0:
             logging.info(f'Start epoch {epoch}')
-        train(model, data, epoch, optimizer, scaler, scheduler, args, writer)
+        if args.distillation:
+            train_distillation(teacher_model, model, data, epoch, optimizer, scaler, scheduler, args, writer)
+        else:
+            train(model, data, epoch, optimizer, scaler, scheduler, args, writer)
         steps = data["train"].dataloader.num_batches * (epoch + 1)
         if args.val_data is not None:
             evaluate(model, data, epoch + 1, args, writer, steps)
@@ -240,6 +272,8 @@ def main():
             f"batchsize={args.batch_size}_workers={args.workers}_date=%Y-%m-%d-%H-%M-%S",
             gmtime(),
         )
+        if args.distillation:
+            args.name = "distillation_" + args.name
 
     if args.copy_codebase:
         import sys, subprocess

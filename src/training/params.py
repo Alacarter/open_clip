@@ -208,6 +208,24 @@ def parse_args():
         action="store_true",
         help="Add ColorJitter during training.",
     )
+    parser.add_argument(
+        "--distillation",
+        default=False,
+        action="store_true",
+        help="Treat teacher model outputs as ground truth. Finetune the student model to match the teacher model.",
+    )
+    parser.add_argument(
+        "--teacher-model-ckpt",
+        default=None,
+        type=str,
+        help="Teacher (ground truth) model for distillation"
+    )
+    parser.add_argument(
+        "--student-model-ckpt",
+        default=None,
+        type=str,
+        help="Student (finetuned) model for distillation"
+    )
     # Transformer-MM-Explainability
     parser.add_argument("--num-evals", type=int, default=0)
     # Below: Saliency-like filepaths.
