@@ -152,7 +152,13 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         teacher_model = instantiate_model_wrapper(teacher_model)
         # From here on, `student_model` is called `model`
         model = instantiate_model_wrapper(student_model)
-        data = get_data(args, (student_preprocess_train, student_preprocess_val))
+        data = get_data(
+            args,
+            ( # preprocess_fns
+                (teacher_preprocess_train, student_preprocess_train), # Train functions
+                (teacher_preprocess_val, student_preprocess_val), # Val functions
+            ),
+        )
     else:
         model = instantiate_model_wrapper(model)
         data = get_data(args, (preprocess_train, preprocess_val))

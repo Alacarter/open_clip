@@ -148,7 +148,7 @@ def train(model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None
                     wandb.log({name: val, 'step': timestep})
 
 
-def get_distillation_loss(teacher_model, student_model, images, texts, loss_img, loss_txt, args):
+def get_distillation_loss(teacher_model, student_model, student_images, texts, teacher_images, loss_img, loss_txt, args):
     def get_log_probs(model, images, texts, args):
         image_features, text_features, logit_scale = model(images, texts)
         logit_scale = logit_scale.mean()
@@ -193,8 +193,8 @@ def get_distillation_loss(teacher_model, student_model, images, texts, loss_img,
         log_probs_per_text = nn.functional.log_softmax(logits_per_text)
         return log_probs_per_image, log_probs_per_text
 
-    teacher_log_probs_per_image, teacher_log_probs_per_text = get_log_probs(teacher_model, images, texts, args)
-    student_log_probs_per_image, student_log_probs_per_text = get_log_probs(student_model, images, texts, args)
+    teacher_log_probs_per_image, teacher_log_probs_per_text = get_log_probs(teacher_model, teacher_images, texts, args)
+    student_log_probs_per_image, student_log_probs_per_text = get_log_probs(student_model, student_images, texts, args)
 
     image_KL = loss_img(student_log_probs_per_image, teacher_log_probs_per_image)
     text_KL = loss_txt(student_log_probs_per_text, teacher_log_probs_per_text)
@@ -203,7 +203,7 @@ def get_distillation_loss(teacher_model, student_model, images, texts, loss_img,
     return distillation_loss
 
 
-def train_distilation(teacher_model, student_model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None):
+def train_distillation(teacher_model, student_model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None):
     os.environ["WDS_EPOCH"] = str(epoch)
 
     teacher_model.train()
@@ -229,10 +229,11 @@ def train_distilation(teacher_model, student_model, data, epoch, optimizer, scal
 
         optimizer.zero_grad()
 
-        images, texts = batch
+        student_images, texts, teacher_images = batch
         if args.gpu is not None:
-            images = images.cuda(args.gpu, non_blocking=True)
+            student_images = student_images.cuda(args.gpu, non_blocking=True)
             texts = texts.cuda(args.gpu, non_blocking=True)
+            teacher_images = teacher_images.cuda(args.gpu, non_blocking=True)
 
         data_time = time.time() - end
 
@@ -242,14 +243,14 @@ def train_distilation(teacher_model, student_model, data, epoch, optimizer, scal
         if args.precision == "amp":
             with autocast():
                 total_loss = get_distillation_loss(
-                    teacher_model, student_model, images, texts, loss_img, loss_txt, args)
+                    teacher_model, student_model, student_images, texts, teacher_images, loss_img, loss_txt, args)
                 scaler.scale(total_loss).backward()
                 scaler.step(optimizer)
             scaler.update()
 
         else:
             total_loss = get_distillation_loss(
-                teacher_model, student_model, images, texts, loss_img, loss_txt, args)
+                teacher_model, student_model, student_images, texts, teacher_images, loss_img, loss_txt, args)
             total_loss.backward()
             optimizer.step()
 

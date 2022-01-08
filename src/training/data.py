@@ -46,6 +46,27 @@ class CsvDataset(Dataset):
         texts = tokenize([str(self.captions[idx])])[0]
         return images, texts
 
+class CsvDatasetTwoTransforms(Dataset):
+    def __init__(self, input_filename, teacher_transforms, student_transforms, img_key, caption_key, sep=","):
+        logging.debug(f'Loading csv data from {input_filename}.')
+        df = pd.read_csv(input_filename, sep=sep)
+        print(df.columns)
+
+        self.images = df[img_key].tolist()
+        self.captions = df[caption_key].tolist()
+        self.teacher_transforms = teacher_transforms
+        self.student_transforms = student_transforms
+        logging.debug('Done loading data.')
+
+    def __len__(self):
+        return len(self.captions)
+
+    def __getitem__(self, idx):
+        student_transformed_images = self.student_transforms(Image.open(str(self.images[idx])))
+        teacher_transformed_images = self.teacher_transforms(Image.open(str(self.images[idx])))
+        texts = tokenize([str(self.captions[idx])])[0]
+        return student_transformed_images, texts, teacher_transformed_images
+
 @dataclass
 class DataInfo:
     dataloader: DataLoader
@@ -198,18 +219,55 @@ def get_dataset_fn(data_path, dataset_type):
                 f"Tried to figure out dataset type, but failed for extention {ext}.")
     else:
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
-    
+
+def get_distillation_data(args, preprocess_fns, is_train):
+    teacher_preprocess_fn, student_preprocess_fn = preprocess_fns
+    if args.dataset_type == "csv":
+        input_filename = args.train_data if is_train else args.val_data
+        assert input_filename
+        dataset = CsvDatasetTwoTransforms(
+            input_filename,
+            teacher_preprocess_fn,
+            student_preprocess_fn,
+            img_key=args.csv_img_key,
+            caption_key=args.csv_caption_key,
+            sep=args.csv_separator)
+        num_samples = len(dataset)
+        sampler = DistributedSampler(dataset) if args.distributed and is_train else None
+        shuffle = is_train and sampler is None
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=shuffle,
+            num_workers=args.workers,
+            pin_memory=True,
+            sampler=sampler,
+            drop_last=is_train,
+        )
+        dataloader.num_samples = num_samples
+        dataloader.num_batches = len(dataloader)
+
+        return DataInfo(dataloader, sampler)
+    else:
+        raise NotImplementedError
 
 def get_data(args, preprocess_fns):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
-    if args.train_data:
-        data["train"] = get_dataset_fn(args.train_data, args.dataset_type)(
-            args, preprocess_train, is_train=True)
-    if args.val_data:
-        data["val"] = get_dataset_fn(args.val_data, args.dataset_type)(
-            args, preprocess_val, is_train=False)
+    if args.distillation:
+        if args.train_data:
+            data["train"] = get_distillation_data(args, preprocess_train, is_train=True)
+        if args.val_data:
+            data["val"] = get_distillation_data(args, preprocess_val, is_train=False)
+    else:
+        if args.train_data:
+            data["train"] = get_dataset_fn(args.train_data, args.dataset_type)(
+                args, preprocess_train, is_train=True)
+        if args.val_data:
+            data["val"] = get_dataset_fn(args.val_data, args.dataset_type)(
+                args, preprocess_val, is_train=False)
 
     if args.imagenet_val is not None:
         data["imagenet-val"] = get_imagenet(args, preprocess_fns, "val")
