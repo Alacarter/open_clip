@@ -33,7 +33,7 @@ def convert_models_to_fp32(model):
 def is_master(args):
     return (not args.distributed) or args.gpu == 0 or args.dp
 
-def instantiate_model_wrapper(model):
+def instantiate_model_wrapper(args, model):
     # Used only in `main_worker`
     # See https://discuss.pytorch.org/t/valueerror-attemting-to-unscale-fp16-gradients/81372
     if args.precision == "amp" or args.precision == "fp32" or args.gpu is None:
@@ -149,9 +149,9 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
 
     if args.distillation:
         # Does this need to be done for the teacher model?
-        teacher_model = instantiate_model_wrapper(teacher_model)
+        teacher_model = instantiate_model_wrapper(args, teacher_model)
         # From here on, `student_model` is called `model`
-        model = instantiate_model_wrapper(student_model)
+        model = instantiate_model_wrapper(args, student_model)
         data = get_data(
             args,
             ( # preprocess_fns
@@ -160,7 +160,7 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
             ),
         )
     else:
-        model = instantiate_model_wrapper(model)
+        model = instantiate_model_wrapper(args, model)
         data = get_data(args, (preprocess_train, preprocess_val))
 
     exclude = lambda n : "bn" in n or "ln" in n or "bias" in n or 'logit_scale' in n
@@ -199,6 +199,7 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         start_epoch = load_pretrained_checkpoint(args.resume, model, optimizer, args)
     elif args.distillation:
         start_epoch = load_pretrained_checkpoint(args.student_model_ckpt, model, optimizer, args)
+        start_epoch = 0
 
     cudnn.benchmark = True
     cudnn.deterministic = False

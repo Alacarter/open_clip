@@ -225,35 +225,34 @@ def get_dataset_fn(data_path, dataset_type):
 
 def get_distillation_data(args, preprocess_fns, is_train):
     teacher_preprocess_fn, student_preprocess_fn = preprocess_fns
-    if args.dataset_type == "csv":
-        input_filename = args.train_data if is_train else args.val_data
-        assert input_filename
-        dataset = CsvDatasetTwoTransforms(
-            input_filename,
-            teacher_preprocess_fn,
-            student_preprocess_fn,
-            img_key=args.csv_img_key,
-            caption_key=args.csv_caption_key,
-            sep=args.csv_separator)
-        num_samples = len(dataset)
-        sampler = DistributedSampler(dataset) if args.distributed and is_train else None
-        shuffle = is_train and sampler is None
+    input_filename = args.train_data if is_train else args.val_data
+    assert input_filename
+    ext = input_filename.split('.')[-1]
+    assert ext == "csv", "Unsupported data_path extension."
+    dataset = CsvDatasetTwoTransforms(
+        input_filename,
+        teacher_preprocess_fn,
+        student_preprocess_fn,
+        img_key=args.csv_img_key,
+        caption_key=args.csv_caption_key,
+        sep=args.csv_separator)
+    num_samples = len(dataset)
+    sampler = DistributedSampler(dataset) if args.distributed and is_train else None
+    shuffle = is_train and sampler is None
 
-        dataloader = DataLoader(
-            dataset,
-            batch_size=args.batch_size,
-            shuffle=shuffle,
-            num_workers=args.workers,
-            pin_memory=True,
-            sampler=sampler,
-            drop_last=is_train,
-        )
-        dataloader.num_samples = num_samples
-        dataloader.num_batches = len(dataloader)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=shuffle,
+        num_workers=args.workers,
+        pin_memory=True,
+        sampler=sampler,
+        drop_last=is_train,
+    )
+    dataloader.num_samples = num_samples
+    dataloader.num_batches = len(dataloader)
 
-        return DataInfo(dataloader, sampler)
-    else:
-        raise NotImplementedError
+    return DataInfo(dataloader, sampler)
 
 def get_data(args, preprocess_fns):
     preprocess_train, preprocess_val = preprocess_fns

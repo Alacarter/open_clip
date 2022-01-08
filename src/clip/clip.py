@@ -18,13 +18,8 @@ from torchvision.transforms import (
 from tqdm import tqdm
 
 from .model import build_model
-
-USE_CUSTOM_TOKENIZER = True
-
-if USE_CUSTOM_TOKENIZER:
-    from .tokenizer import CustomTokenizer
-else:
-    from .simple_tokenizer import SimpleTokenizer
+from .tokenizer import CustomTokenizer
+from .simple_tokenizer import SimpleTokenizer
 
 __all__ = ["available_models", "load", "tokenize"]
 # _tokenizer = _Tokenizer()
@@ -264,7 +259,5 @@ def custom_tokenize(texts: Union[str, List[str]], context_length: int = 77, _tok
     return result
 
 # Redefine the tokenize function.
-if USE_CUSTOM_TOKENIZER:
-    tokenize = custom_tokenize
-else:
-    tokenize = clip_tokenize
+tokenize = custom_tokenize
+# tokenize = clip_tokenize
