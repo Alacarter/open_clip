@@ -16,7 +16,7 @@ from torch.cuda.amp import GradScaler
 
 from clip.clip import _transform, load
 from clip.model import convert_weights, CLIP
-from training.train import train, evaluate, evaluate_distillation
+from training.train import train, train_distillation, evaluate, evaluate_distillation
 from training.data import get_data
 from training.params import parse_args
 from training.logger import setup_primary_logging, setup_worker_logging

@@ -159,8 +159,9 @@ def train(model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None
 def get_log_probs(model, images, texts, args):
     logits_per_image, logits_per_text, ground_truth = get_logits(
         model, images, texts, args)
-    log_probs_per_image = nn.functional.log_softmax(logits_per_image)
-    log_probs_per_text = nn.functional.log_softmax(logits_per_text)
+    # logits are shape (bsz, bsz). logits_per_text is logits_per_image.T.
+    log_probs_per_image = nn.functional.log_softmax(logits_per_image, dim=1)
+    log_probs_per_text = nn.functional.log_softmax(logits_per_text, dim=1)
     return log_probs_per_image, log_probs_per_text
 
 
@@ -185,8 +186,8 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
 
     dataloader, sampler = data['train'].dataloader,  data['train'].sampler
 
-    loss_img = nn.KLDivLoss(log_target=True)
-    loss_txt = nn.KLDivLoss(log_target=True)
+    loss_img = nn.KLDivLoss(log_target=True, reduction='batchmean')
+    loss_txt = nn.KLDivLoss(log_target=True, reduction='batchmean')
     if args.gpu is not None:
         loss_img = loss_img.cuda(args.gpu)
         loss_txt = loss_txt.cuda(args.gpu)
@@ -212,7 +213,8 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
 
         data_time = time.time() - end
 
-        m = model.module if args.distributed or args.dp else model
+        m_teacher = teacher_model.module if args.distributed or args.dp else teacher_model
+        m_student = student_model.module if args.distributed or args.dp else student_model
 
         # with automatic mixed precision.
         if args.precision == "amp":
@@ -232,19 +234,20 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
             optimizer.step()
 
         # Note: we clamp to 4.6052 = ln(100), as in the original paper.
-        m.logit_scale.data = torch.clamp(m.logit_scale.data, 0, 4.6052)
+        m_teacher.logit_scale.data = torch.clamp(m_teacher.logit_scale.data, 0, 4.6052)
+        m_student.logit_scale.data = torch.clamp(m_student.logit_scale.data, 0, 4.6052)
 
         batch_time = time.time() - end
         end = time.time()
 
         if is_master(args) and (i % 100) == 0:
-            num_samples = i * len(images) * args.world_size
+            num_samples = i * len(student_images) * args.world_size
             samples_per_epoch = dataloader.num_samples
             percent_complete = 100.0 * i / num_batches_per_epoch
             logging.info(
                 f"Train Epoch: {epoch} [{num_samples}/{samples_per_epoch} ({percent_complete:.0f}%)]\t"
                 f"Loss: {total_loss.item():.6f}\tData (t) {data_time:.3f}\tBatch (t) {batch_time:.3f}"
-                f"\tLR: {optimizer.param_groups[0]['lr']:5f}\tlogit_scale {m.logit_scale.data:.3f}"
+                f"\tLR: {optimizer.param_groups[0]['lr']:5f}\tlogit_scale {m_student.logit_scale.data:.3f}"
             )
             # save train loss / etc.
 
@@ -253,7 +256,7 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
                 "loss": total_loss.item(),
                 "data_time": data_time,
                 "batch_time": batch_time,
-                "scale":  m.logit_scale.data.item(),
+                "scale":  m_student.logit_scale.data.item(),
                 "lr": optimizer.param_groups[0]["lr"]
             }
 
@@ -351,8 +354,8 @@ def evaluate_distillation(teacher_model, student_model, data, epoch, args, tb_wr
 
     dataloader = data['val'].dataloader
 
-    loss_img = nn.KLDivLoss(log_target=True)
-    loss_txt = nn.KLDivLoss(log_target=True)
+    loss_img = nn.KLDivLoss(log_target=True, reduction='batchmean')
+    loss_txt = nn.KLDivLoss(log_target=True, reduction='batchmean')
     if args.gpu is not None:
         loss_img = loss_img.cuda(args.gpu)
         loss_txt = loss_txt.cuda(args.gpu)
@@ -376,14 +379,14 @@ def evaluate_distillation(teacher_model, student_model, data, epoch, args, tb_wr
             logits_per_image = logit_scale * image_features @ text_features.t()
             logits_per_text = logits_per_image.t()
 
-            ground_truth = torch.arange(len(images)).long()
+            ground_truth = torch.arange(len(student_images)).long()
             if args.gpu is not None:
                 ground_truth = ground_truth.cuda(args.gpu, non_blocking=True)
             total_loss = get_distillation_loss(
                 teacher_model, student_model, teacher_images, teacher_texts,
                 student_images, student_texts, loss_img, loss_txt, args)
 
-            batch_size = len(images)
+            batch_size = len(student_images)
             cumulative_loss += total_loss * batch_size
             num_elements += batch_size
 
