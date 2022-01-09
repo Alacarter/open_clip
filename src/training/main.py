@@ -16,7 +16,7 @@ from torch.cuda.amp import GradScaler
 
 from clip.clip import _transform, load
 from clip.model import convert_weights, CLIP
-from training.train import train, evaluate
+from training.train import train, evaluate, evaluate_distillation
 from training.data import get_data
 from training.params import parse_args
 from training.logger import setup_primary_logging, setup_worker_logging
@@ -231,10 +231,16 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         logging.debug('Finished loading wandb.')
 
     if args.train_data is None:
-        evaluate(model, data, start_epoch, args, writer, 0)
+        if args.distillation:
+            evaluate_distillation(teacher_model, model, data, start_epoch, args, writer, 0)
+        else:
+            evaluate(model, data, start_epoch, args, writer, 0)
         return
     elif start_epoch == 0 and args.val_data is not None:
-        evaluate(model, data, 0, args, writer, 0)
+        if args.distillation:
+            evaluate_distillation(teacher_model, model, data, 0, args, writer, 0)
+        else:
+            evaluate(model, data, 0, args, writer, 0)
 
     for epoch in range(start_epoch, args.epochs):
         if args.gpu == 0:
@@ -245,7 +251,10 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
             train(model, data, epoch, optimizer, scaler, scheduler, args, writer)
         steps = data["train"].dataloader.num_batches * (epoch + 1)
         if args.val_data is not None:
-            evaluate(model, data, epoch + 1, args, writer, steps)
+            if args.distillation:
+                evaluate_distillation(teacher_model, model, data, epoch + 1, args, writer, steps)
+            else:
+                evaluate(model, data, epoch + 1, args, writer, steps)
 
         # Saving checkpoints.
         if args.save_logs and (args.gpu == 0 or (not args.distributed)):

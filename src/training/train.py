@@ -20,7 +20,8 @@ import logging
 def is_master(args):
     return (not args.distributed) or args.gpu == 0
 
-def get_loss(model, images, texts, loss_img, loss_txt, args):
+
+def get_logits(model, images, texts, args):
     image_features, text_features, logit_scale = model(images, texts)
     logit_scale = logit_scale.mean()
     if args.distributed and args.aggregate:
@@ -59,6 +60,13 @@ def get_loss(model, images, texts, loss_img, loss_txt, args):
     ground_truth = torch.arange(len(logits_per_image)).long()
     if args.gpu is not None:
         ground_truth = ground_truth.cuda(args.gpu, non_blocking=True)
+
+    return logits_per_image, logits_per_text, ground_truth
+
+
+def get_loss(model, images, texts, loss_img, loss_txt, args):
+    logits_per_image, logits_per_text, ground_truth = get_logits(
+        model, images, texts, args)
 
     total_loss = (
         loss_img(logits_per_image, ground_truth)
@@ -148,53 +156,19 @@ def train(model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None
                     wandb.log({name: val, 'step': timestep})
 
 
-def get_distillation_loss(teacher_model, student_model, student_images, texts, teacher_images, loss_img, loss_txt, args):
-    def get_log_probs(model, images, texts, args):
-        image_features, text_features, logit_scale = model(images, texts)
-        logit_scale = logit_scale.mean()
-        if args.distributed and args.aggregate:
-            world_size = dist.get_world_size()
-            rank = dist.get_rank()
+def get_log_probs(model, images, texts, args):
+    logits_per_image, logits_per_text, ground_truth = get_logits(
+        model, images, texts, args)
+    log_probs_per_image = nn.functional.log_softmax(logits_per_image)
+    log_probs_per_text = nn.functional.log_softmax(logits_per_text)
+    return log_probs_per_image, log_probs_per_text
 
-            # We gather tensors from all gpus to get more negatives to contrast with.
-            gathered_image_features = [
-                torch.zeros_like(image_features) for _ in range(world_size)
-            ]
-            gathered_text_features = [
-                torch.zeros_like(text_features) for _ in range(world_size)
-            ]
-            dist.all_gather(gathered_image_features, image_features)
-            dist.all_gather(gathered_text_features, text_features)
 
-            all_image_features = torch.cat(
-                [image_features]
-                + gathered_image_features[:rank]
-                + gathered_image_features[rank + 1 :]
-            )
-            all_text_features = torch.cat(
-                [text_features]
-                + gathered_text_features[:rank]
-                + gathered_text_features[rank + 1 :]
-            )
-
-            # this is needed to send gradients back everywhere.
-            logits_per_image = logit_scale * all_image_features @ all_text_features.t()
-            logits_per_text = logits_per_image.t()
-
-        else:
-            logits_per_image = logit_scale * image_features @ text_features.t()
-            logits_per_text = logit_scale * text_features @ image_features.t()
-
-        ground_truth = torch.arange(len(logits_per_image)).long()
-        if args.gpu is not None:
-            ground_truth = ground_truth.cuda(args.gpu, non_blocking=True)
-
-        log_probs_per_image = nn.functional.log_softmax(logits_per_image)
-        log_probs_per_text = nn.functional.log_softmax(logits_per_text)
-        return log_probs_per_image, log_probs_per_text
-
-    teacher_log_probs_per_image, teacher_log_probs_per_text = get_log_probs(teacher_model, teacher_images, texts, args)
-    student_log_probs_per_image, student_log_probs_per_text = get_log_probs(student_model, student_images, texts, args)
+def get_distillation_loss(
+        teacher_model, student_model, teacher_images, teacher_texts,
+        student_images, student_texts, loss_img, loss_txt, args):
+    teacher_log_probs_per_image, teacher_log_probs_per_text = get_log_probs(teacher_model, teacher_images, teacher_texts, args)
+    student_log_probs_per_image, student_log_probs_per_text = get_log_probs(student_model, student_images, student_texts, args)
 
     image_KL = loss_img(student_log_probs_per_image, teacher_log_probs_per_image)
     text_KL = loss_txt(student_log_probs_per_text, teacher_log_probs_per_text)
@@ -244,14 +218,16 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
         if args.precision == "amp":
             with autocast():
                 total_loss = get_distillation_loss(
-                    teacher_model, student_model, student_images, texts, teacher_images, loss_img, loss_txt, args)
+                    teacher_model, student_model, teacher_images, teacher_texts,
+                    student_images, student_texts, loss_img, loss_txt, args)
                 scaler.scale(total_loss).backward()
                 scaler.step(optimizer)
             scaler.update()
 
         else:
             total_loss = get_distillation_loss(
-                teacher_model, student_model, student_images, texts, teacher_images, loss_img, loss_txt, args)
+                teacher_model, student_model, teacher_images, teacher_texts,
+                student_images, student_texts, loss_img, loss_txt, args)
             total_loss.backward()
             optimizer.step()
 
@@ -329,6 +305,83 @@ def evaluate(model, data, epoch, args, tb_writer=None, steps=None):
                 loss_img(logits_per_image, ground_truth)
                 + loss_txt(logits_per_text, ground_truth)
             ) / 2
+
+            batch_size = len(images)
+            cumulative_loss += total_loss * batch_size
+            num_elements += batch_size
+
+        metrics = get_metrics(
+            torch.cat(all_image_features), torch.cat(all_text_features)
+        )
+        loss = cumulative_loss / num_elements
+        metrics.update(
+            **{"val_loss": loss.item(), "epoch": epoch, "num_elements": num_elements}
+        )
+        metrics.update(zero_shot_metrics)
+
+        logging.info(
+            f"Eval Epoch: {epoch} "
+            + "\t".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
+        )
+
+        if args.save_logs:
+            for name, val in metrics.items():
+                if tb_writer is not None:
+                    tb_writer.add_scalar(f"val/{name}", val, epoch)
+        if args.wandb:
+            for name, val in metrics.items():
+                wandb.log({f"val/{name}": val, 'epoch': epoch})
+
+    if args.save_logs:
+        with open(os.path.join(args.checkpoint_path, "results.jsonl"), "a+") as f:
+            f.write(json.dumps(metrics))
+            f.write("\n")
+
+    return metrics
+
+
+def evaluate_distillation(teacher_model, student_model, data, epoch, args, tb_writer=None, steps=None):
+    if not is_master(args):
+        return
+
+    teacher_model.eval()
+    student_model.eval()
+
+    zero_shot_metrics = zero_shot_eval(student_model, data, epoch, args)
+
+    dataloader = data['val'].dataloader
+
+    loss_img = nn.KLDivLoss(log_target=True)
+    loss_txt = nn.KLDivLoss(log_target=True)
+    if args.gpu is not None:
+        loss_img = loss_img.cuda(args.gpu)
+        loss_txt = loss_txt.cuda(args.gpu)
+
+    cumulative_loss = 0.0
+    num_elements = 0.0
+    all_image_features, all_text_features = [], []
+    with torch.no_grad():
+        for batch in dataloader:
+            teacher_images, teacher_texts, student_images, student_texts = batch
+            if args.gpu is not None:
+                teacher_images = teacher_images.cuda(args.gpu, non_blocking=True)
+                teacher_texts = teacher_texts.cuda(args.gpu, non_blocking=True)
+                student_images = student_images.cuda(args.gpu, non_blocking=True)
+                student_texts = student_texts.cuda(args.gpu, non_blocking=True)
+
+            image_features, text_features, logit_scale = student_model(student_images, student_texts)
+            all_image_features.append(image_features)
+            all_text_features.append(text_features)
+            logit_scale = logit_scale.mean()
+            logits_per_image = logit_scale * image_features @ text_features.t()
+            logits_per_text = logits_per_image.t()
+
+            ground_truth = torch.arange(len(images)).long()
+            if args.gpu is not None:
+                ground_truth = ground_truth.cuda(args.gpu, non_blocking=True)
+            total_loss = get_distillation_loss(
+                teacher_model, student_model, teacher_images, teacher_texts,
+                student_images, student_texts, loss_img, loss_txt, args)
 
             batch_size = len(images)
             cumulative_loss += total_loss * batch_size
