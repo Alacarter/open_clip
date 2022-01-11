@@ -233,12 +233,14 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
     if args.train_data is None:
         if args.distillation:
             evaluate_distillation(teacher_model, model, data, start_epoch, args, writer, 0)
+            evaluate(teacher_model, data, start_epoch, args, writer, 0, distill_model_type="teacher")
         else:
             evaluate(model, data, start_epoch, args, writer, 0)
         return
     elif start_epoch == 0 and args.val_data is not None:
         if args.distillation:
             evaluate_distillation(teacher_model, model, data, 0, args, writer, 0)
+            evaluate(teacher_model, data, 0, args, writer, 0, distill_model_type="teacher")
         else:
             evaluate(model, data, 0, args, writer, 0)
 
@@ -253,6 +255,7 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         if args.val_data is not None:
             if args.distillation:
                 evaluate_distillation(teacher_model, model, data, epoch + 1, args, writer, steps)
+                evaluate(teacher_model, data, epoch + 1, args, writer, steps, distill_model_type="teacher")
             else:
                 evaluate(model, data, epoch + 1, args, writer, steps)
 

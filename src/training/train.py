@@ -178,6 +178,41 @@ def get_distillation_loss(
     return distillation_loss
 
 
+def save_metrics(
+        all_image_features, all_text_features,
+        cumulative_loss, num_elements, epoch, zero_shot_metrics,
+        tb_writer, args, results_fname="results.jsonl"):
+    with torch.no_grad():
+        metrics = get_metrics(
+                torch.cat(all_image_features), torch.cat(all_text_features)
+            )
+        loss = cumulative_loss / num_elements
+        metrics.update(
+            **{"val_loss": loss.item(), "epoch": epoch, "num_elements": num_elements}
+        )
+        metrics.update(zero_shot_metrics)
+
+        logging.info(
+            f"Eval Epoch: {epoch} "
+            + "\t".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
+        )
+
+        if args.save_logs:
+            for name, val in metrics.items():
+                if tb_writer is not None:
+                    tb_writer.add_scalar(f"val/{name}", val, epoch)
+        if args.wandb:
+            for name, val in metrics.items():
+                wandb.log({f"val/{name}": val, 'epoch': epoch})
+
+    if args.save_logs:
+        with open(os.path.join(args.checkpoint_path, results_fname), "a+") as f:
+            f.write(json.dumps(metrics))
+            f.write("\n")
+
+    return metrics
+
+
 def train_distillation(teacher_model, student_model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None):
     os.environ["WDS_EPOCH"] = str(epoch)
 
@@ -268,7 +303,7 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
                     wandb.log({name: val, 'step': timestep})
 
 
-def evaluate(model, data, epoch, args, tb_writer=None, steps=None):
+def evaluate(model, data, epoch, args, tb_writer=None, steps=None, results_fname="results.jsonl", distill_model_type=None):
     if not is_master(args):
         return
     
@@ -289,7 +324,13 @@ def evaluate(model, data, epoch, args, tb_writer=None, steps=None):
     all_image_features, all_text_features = [], []
     with torch.no_grad():
         for batch in dataloader:
-            images, texts = batch
+            if args.distillation:
+                if distill_model_type == "teacher":
+                    images, texts, _, _ = batch
+                elif distill_model_type == "student":
+                    _, _, images, texts = batch
+            else:
+                images, texts = batch
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
                 texts = texts.cuda(args.gpu, non_blocking=True)
@@ -313,32 +354,10 @@ def evaluate(model, data, epoch, args, tb_writer=None, steps=None):
             cumulative_loss += total_loss * batch_size
             num_elements += batch_size
 
-        metrics = get_metrics(
-            torch.cat(all_image_features), torch.cat(all_text_features)
-        )
-        loss = cumulative_loss / num_elements
-        metrics.update(
-            **{"val_loss": loss.item(), "epoch": epoch, "num_elements": num_elements}
-        )
-        metrics.update(zero_shot_metrics)
-
-        logging.info(
-            f"Eval Epoch: {epoch} "
-            + "\t".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
-        )
-
-        if args.save_logs:
-            for name, val in metrics.items():
-                if tb_writer is not None:
-                    tb_writer.add_scalar(f"val/{name}", val, epoch)
-        if args.wandb:
-            for name, val in metrics.items():
-                wandb.log({f"val/{name}": val, 'epoch': epoch})
-
-    if args.save_logs:
-        with open(os.path.join(args.checkpoint_path, "results.jsonl"), "a+") as f:
-            f.write(json.dumps(metrics))
-            f.write("\n")
+    metrics = save_metrics(
+        all_image_features, all_text_features,
+        cumulative_loss, num_elements, epoch, zero_shot_metrics,
+        tb_writer, args, results_fname=results_fname)
 
     return metrics
 
@@ -390,32 +409,10 @@ def evaluate_distillation(teacher_model, student_model, data, epoch, args, tb_wr
             cumulative_loss += total_loss * batch_size
             num_elements += batch_size
 
-        metrics = get_metrics(
-            torch.cat(all_image_features), torch.cat(all_text_features)
-        )
-        loss = cumulative_loss / num_elements
-        metrics.update(
-            **{"val_loss": loss.item(), "epoch": epoch, "num_elements": num_elements}
-        )
-        metrics.update(zero_shot_metrics)
-
-        logging.info(
-            f"Eval Epoch: {epoch} "
-            + "\t".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
-        )
-
-        if args.save_logs:
-            for name, val in metrics.items():
-                if tb_writer is not None:
-                    tb_writer.add_scalar(f"val/{name}", val, epoch)
-        if args.wandb:
-            for name, val in metrics.items():
-                wandb.log({f"val/{name}": val, 'epoch': epoch})
-
-    if args.save_logs:
-        with open(os.path.join(args.checkpoint_path, "results.jsonl"), "a+") as f:
-            f.write(json.dumps(metrics))
-            f.write("\n")
+    metrics = save_metrics(
+        all_image_features, all_text_features,
+        cumulative_loss, num_elements, epoch, zero_shot_metrics,
+        tb_writer, args)
 
     return metrics
 
