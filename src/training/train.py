@@ -181,7 +181,7 @@ def get_distillation_loss(
 def save_metrics(
         all_image_features, all_text_features,
         cumulative_loss, num_elements, epoch, zero_shot_metrics,
-        tb_writer, args, results_fname="results.jsonl"):
+        tb_writer, args, results_fname="results.jsonl", prefix=""):
     with torch.no_grad():
         metrics = get_metrics(
                 torch.cat(all_image_features), torch.cat(all_text_features)
@@ -194,7 +194,7 @@ def save_metrics(
 
         logging.info(
             f"Eval Epoch: {epoch} "
-            + "\t".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
+            + "\t".join([f"{prefix}_{k}: {v:.4f}" for k, v in metrics.items()])
         )
 
         if args.save_logs:
@@ -303,7 +303,7 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
                     wandb.log({name: val, 'step': timestep})
 
 
-def evaluate(model, data, epoch, args, tb_writer=None, steps=None, results_fname="results.jsonl", distill_model_type=None):
+def evaluate(model, data, epoch, args, tb_writer=None, steps=None, results_fname="results.jsonl", distill_model_type=""):
     if not is_master(args):
         return
     
@@ -357,7 +357,7 @@ def evaluate(model, data, epoch, args, tb_writer=None, steps=None, results_fname
     metrics = save_metrics(
         all_image_features, all_text_features,
         cumulative_loss, num_elements, epoch, zero_shot_metrics,
-        tb_writer, args, results_fname=results_fname)
+        tb_writer, args, results_fname=results_fname, prefix=distill_model_type)
 
     return metrics
 
