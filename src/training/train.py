@@ -181,7 +181,7 @@ def get_distillation_loss(
 def train_distillation(teacher_model, student_model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None):
     os.environ["WDS_EPOCH"] = str(epoch)
 
-    teacher_model.train()
+    teacher_model.eval()
     student_model.train()
 
     dataloader, sampler = data['train'].dataloader,  data['train'].sampler
