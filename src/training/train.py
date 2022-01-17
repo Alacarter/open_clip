@@ -175,13 +175,14 @@ def get_distillation_loss(
     text_KL = loss_txt(student_log_probs_per_text, teacher_log_probs_per_text)
 
     distillation_loss = 0.5 * (image_KL + text_KL)
-    return distillation_loss
+    return distillation_loss, image_KL, text_KL
 
 
 def save_metrics(
         all_image_features, all_text_features,
         cumulative_loss, num_elements, epoch, zero_shot_metrics,
-        tb_writer, args, results_fname="results.jsonl", prefix=""):
+        tb_writer, args, results_fname="results.jsonl", prefix="",
+        cum_image_loss=None, cum_text_loss=None):
     with torch.no_grad():
         metrics = get_metrics(
                 torch.cat(all_image_features), torch.cat(all_text_features)
@@ -190,6 +191,14 @@ def save_metrics(
         metrics.update(
             **{"val_loss": loss.item(), "epoch": epoch, "num_elements": num_elements}
         )
+
+        if cum_image_loss is not None:
+            image_loss = cum_image_loss / num_elements
+            metrics.update({"val_image_loss": image_loss.item()})
+        if cum_text_loss is not None:
+            text_loss = cum_text_loss / num_elements
+            metrics.update({"val_text_loss": text_loss.item()})
+
         metrics.update(zero_shot_metrics)
 
         logging.info(
@@ -401,7 +410,7 @@ def evaluate_distillation(teacher_model, student_model, data, epoch, args, tb_wr
             ground_truth = torch.arange(len(student_images)).long()
             if args.gpu is not None:
                 ground_truth = ground_truth.cuda(args.gpu, non_blocking=True)
-            total_loss = get_distillation_loss(
+            total_loss, total_image_loss, total_text_loss = get_distillation_loss(
                 teacher_model, student_model, teacher_images, teacher_texts,
                 student_images, student_texts, loss_img, loss_txt, args)
 
@@ -412,7 +421,7 @@ def evaluate_distillation(teacher_model, student_model, data, epoch, args, tb_wr
     metrics = save_metrics(
         all_image_features, all_text_features,
         cumulative_loss, num_elements, epoch, zero_shot_metrics,
-        tb_writer, args)
+        tb_writer, args, cum_image_loss=total_image_loss, cum_text_loss=total_text_loss)
 
     return metrics
 
