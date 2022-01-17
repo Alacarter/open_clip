@@ -263,7 +263,7 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
         # with automatic mixed precision.
         if args.precision == "amp":
             with autocast():
-                total_loss = get_distillation_loss(
+                total_loss, total_image_loss, total_text_loss = get_distillation_loss(
                     teacher_model, student_model, teacher_images, teacher_texts,
                     student_images, student_texts, loss_img, loss_txt, args)
                 scaler.scale(total_loss).backward()
@@ -271,7 +271,7 @@ def train_distillation(teacher_model, student_model, data, epoch, optimizer, sca
             scaler.update()
 
         else:
-            total_loss = get_distillation_loss(
+            total_loss, total_image_loss, total_text_loss = get_distillation_loss(
                 teacher_model, student_model, teacher_images, teacher_texts,
                 student_images, student_texts, loss_img, loss_txt, args)
             total_loss.backward()
@@ -389,6 +389,8 @@ def evaluate_distillation(teacher_model, student_model, data, epoch, args, tb_wr
         loss_txt = loss_txt.cuda(args.gpu)
 
     cumulative_loss = 0.0
+    cum_image_loss = 0.0
+    cum_text_loss = 0.0
     num_elements = 0.0
     all_image_features, all_text_features = [], []
     with torch.no_grad():
@@ -416,12 +418,14 @@ def evaluate_distillation(teacher_model, student_model, data, epoch, args, tb_wr
 
             batch_size = len(student_images)
             cumulative_loss += total_loss * batch_size
+            cum_image_loss += total_image_loss * batch_size
+            cum_text_loss += total_text_loss * batch_size
             num_elements += batch_size
 
     metrics = save_metrics(
         all_image_features, all_text_features,
         cumulative_loss, num_elements, epoch, zero_shot_metrics,
-        tb_writer, args, cum_image_loss=total_image_loss, cum_text_loss=total_text_loss)
+        tb_writer, args, cum_image_loss=cum_image_loss, cum_text_loss=cum_text_loss)
 
     return metrics
 
