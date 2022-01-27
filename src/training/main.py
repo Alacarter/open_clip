@@ -136,6 +136,13 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
             jit=False,
             is_train=True,
         )
+        # Weird hack
+        teacher_preprocess_train = teacher_preprocess_val
+        student_preprocess_train = student_preprocess_val
+        print("teacher_preprocess_train", teacher_preprocess_train)
+        print("teacher_preprocess_val", teacher_preprocess_val)
+        print("student_preprocess_train", student_preprocess_train)
+        print("student_preprocess_val", student_preprocess_val)
     else:
         model_config_file = Path(__file__).parent / f"model_configs/{args.model.replace('/', '-')}.json"
         print('Loading model from', model_config_file)
