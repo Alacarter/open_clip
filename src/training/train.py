@@ -101,6 +101,7 @@ def train(model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None
         optimizer.zero_grad()
 
         images, texts = batch
+        import ipdb; ipdb.set_trace()
         if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
             texts = texts.cuda(args.gpu, non_blocking=True)

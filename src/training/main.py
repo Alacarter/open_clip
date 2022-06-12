@@ -118,6 +118,7 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         model, preprocess_train, preprocess_val = load(
             args.model,
             args.color_jitter,
+            args.img_erase_prob,
             jit=False,
             is_train=True)
         # model, preprocess = load(args.model, jit=False)
@@ -127,12 +128,14 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         teacher_model, teacher_preprocess_train, teacher_preprocess_val = load(
             args.teacher_model_ckpt,
             args.color_jitter,
+            args.img_erase_prob,
             jit=False,
             is_train=True,
         )
         student_model, student_preprocess_train, student_preprocess_val = load(
             args.student_model_ckpt,
             args.color_jitter,
+            args.img_erase_prob,
             jit=False,
             is_train=True,
         )
@@ -151,8 +154,12 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
             model_info = json.load(f)
         model = CLIP(**model_info)
         convert_weights(model)
-        preprocess_train = _transform(model.visual.input_resolution, is_train=True, color_jitter=args.color_jitter)
-        preprocess_val = _transform(model.visual.input_resolution, is_train=False, color_jitter=False)
+        preprocess_train = _transform(
+            model.visual.input_resolution, is_train=True,
+            color_jitter=args.color_jitter, img_erase_prob=args.img_erase_prob)
+        preprocess_val = _transform(
+            model.visual.input_resolution, is_train=False,
+            color_jitter=False, img_erase_prob=0.0)
 
     if args.distillation:
         # Does this need to be done for the teacher model?

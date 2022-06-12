@@ -14,6 +14,7 @@ from torchvision.transforms import (
     Normalize,
     RandomResizedCrop,
     ColorJitter,
+    RandomErasing,
 )
 from tqdm import tqdm
 
@@ -68,23 +69,38 @@ def _download(url: str, root: str = os.path.expanduser("~/.cache/clip")):
 def _convert_to_rgb(image):
     return image.convert('RGB')
 
-def _transform(n_px: int, is_train: bool, color_jitter: bool):
+def _transform(n_px: int, is_train: bool, color_jitter: bool, random_erase_prob: float = 0.0):
     normalize = Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
     if is_train:
-        transforms_list = [
-            RandomResizedCrop(n_px, scale=(0.9, 1.0), interpolation=Image.BICUBIC),
-            _convert_to_rgb,
-            ToTensor(),
-            normalize,
-        ]
+        transforms_list = []
+
         if color_jitter:
             print("color_jitter is on.")
-            transforms_list = [ColorJitter(
+            transforms_list.append(ColorJitter(
                 brightness=0.5,
                 contrast=0.5,
                 saturation=1.0,
                 hue=0.5
-            )] + transforms_list
+            ))
+
+        transforms_list.extend([
+            RandomResizedCrop(n_px, scale=(0.9, 1.0), interpolation=Image.BICUBIC),
+            _convert_to_rgb,
+            ToTensor(),
+        ])
+
+        if random_erase_prob > 0.0:
+            print("random erase is on")
+            # Must be done after ToTensor()
+            transforms_list.append(RandomErasing(
+                p=random_erase_prob,
+                scale=(0.1, 0.3),
+                ratio=(0.25, 4.0),
+                value='random',
+                inplace=False,
+            ))
+
+        transforms_list.append(normalize)
         print("transforms_list", transforms_list)
         return Compose(transforms_list)
     else:
@@ -101,7 +117,9 @@ def available_models() -> List[str]:
     return list(_MODELS.keys())
 
 
-def load(name: str, color_jitter: bool, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit=True, is_train=False, pretrained=True):
+def load(name: str, color_jitter: bool, random_erase_prob: float,
+         device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
+         jit=True, is_train=False, pretrained=True):
     """Load a CLIP model
     Parameters
     ----------
@@ -145,9 +163,15 @@ def load(name: str, color_jitter: bool, device: Union[str, torch.device] = "cuda
 
         if str(device) == "cpu":
             model.float()
-        return model, \
-               _transform(model.visual.input_resolution, is_train=True, color_jitter=color_jitter), \
-               _transform(model.visual.input_resolution, is_train=False, color_jitter=False)
+
+        train_transform = transform(
+            model.visual.input_resolution, is_train=True,
+            color_jitter=color_jitter, random_erase_prob=random_erase_prob)
+        val_transform = _transform(
+            model.visual.input_resolution, is_train=False,
+            color_jitter=False, random_erase_prob=0.0)
+
+        return model, train_transform, val_transform
 
     # patch the device names
     device_holder = torch.jit.trace(lambda: torch.ones([]).to(torch.device(device)), example_inputs=[])

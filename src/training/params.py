@@ -209,6 +209,12 @@ def parse_args():
         help="Add ColorJitter during training.",
     )
     parser.add_argument(
+        "--img-erase-prob",
+        default=0.0,
+        type=float,
+        help="Add RandomErasing during training.",
+    )
+    parser.add_argument(
         "--distillation",
         default=False,
         action="store_true",
