@@ -164,7 +164,7 @@ def load(name: str, color_jitter: bool, random_erase_prob: float,
         if str(device) == "cpu":
             model.float()
 
-        train_transform = transform(
+        train_transform = _transform(
             model.visual.input_resolution, is_train=True,
             color_jitter=color_jitter, random_erase_prob=random_erase_prob)
         val_transform = _transform(

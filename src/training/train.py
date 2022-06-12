@@ -101,7 +101,14 @@ def train(model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None
         optimizer.zero_grad()
 
         images, texts = batch
-        import ipdb; ipdb.set_trace()
+        # from PIL import Image
+        # for i, im in enumerate(images):
+        #     img = np.array(im.cpu()).transpose(1, 2, 0)
+        #     img = np.uint8(255 * img)
+        #     img = Image.fromarray(img)
+        #     img.save(f"20220612_{i}.jpg")
+        # quit()
+
         if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
             texts = texts.cuda(args.gpu, non_blocking=True)
