@@ -215,6 +215,13 @@ def parse_args():
         help="Add RandomErasing during training.",
     )
     parser.add_argument(
+        "--tokenize-scheme",
+        required=True,
+        type=str,
+        help="Type of tokenizer.",
+        choices=['clip', 'custom']
+    )
+    parser.add_argument(
         "--distillation",
         default=False,
         action="store_true",

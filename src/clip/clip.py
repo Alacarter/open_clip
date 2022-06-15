@@ -283,5 +283,6 @@ def custom_tokenize(texts: Union[str, List[str]], context_length: int = 77, _tok
     return result
 
 # Redefine the tokenize function.
-tokenize = custom_tokenize
+# Deprecated.
+# tokenize = custom_tokenize
 # tokenize = clip_tokenize

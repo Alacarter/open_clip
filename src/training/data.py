@@ -30,7 +30,9 @@ from clip.clip import (
 
 
 class CsvDataset(Dataset):
-    def __init__(self, input_filename, transforms, img_key, caption_key, sep=","):
+    def __init__(
+            self, input_filename, transforms, img_key, caption_key,
+            tokenize_scheme, sep=","):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
         print(df.columns)
@@ -40,12 +42,19 @@ class CsvDataset(Dataset):
         self.transforms = transforms
         logging.debug('Done loading data.')
 
+        if tokenize_scheme == "clip":
+            self.tokenize_fn = clip_tokenize
+        elif tokenize_scheme == "custom":
+            self.tokenize_fn = clip_tokenize
+        else:
+            raise NotImplementedError
+
     def __len__(self):
         return len(self.captions)
 
     def __getitem__(self, idx):
         images = self.transforms(Image.open(str(self.images[idx])))
-        texts = tokenize([str(self.captions[idx])])[0]
+        texts = self.tokenize_fn([str(self.captions[idx])])[0]
         return images, texts
 
 class CsvDatasetTwoTransforms(Dataset):
@@ -75,8 +84,14 @@ class DataInfo:
     dataloader: DataLoader
     sampler: DistributedSampler
 
-def preprocess_txt(text):
-    return tokenize([str(text)])[0]
+def preprocess_txt(text, tokenize_scheme):
+    if tokenize_scheme == "clip":
+        tokenize_fn = clip_tokenize
+    elif tokenize_scheme == "custom":
+        tokenize_fn = custom_tokenize
+    else:
+        raise NotImplementedError
+    return tokenize_fn([str(text)])[0]
 
 def get_dataset_size(shards):
     shards_list = list(braceexpand.braceexpand(shards))
@@ -141,7 +156,7 @@ def count_samples(dataloader):
         assert len(images) == len(texts)
     return n_elements, n_batches
 
-def get_wds_dataset(args, preprocess_img, is_train):
+def get_wds_dataset(args, preprocess_img, is_train, tokenize_scheme):
     input_shards = args.train_data if is_train else args.val_data
     assert input_shards is not None
 
@@ -159,11 +174,12 @@ def get_wds_dataset(args, preprocess_img, is_train):
         epoch_shuffle=is_train,
         split_by_node=is_train  # NOTE: we do eval on a single gpu.
     )
+    preprocess_txt_fn = lambda x: preprocess_txt(x, tokenize_scheme)
     dataset = (
         wds.WebDataset(shardlist)
         .decode("pil")
         .rename(image="jpg;png", text="txt")
-        .map_dict(image=preprocess_img, text=preprocess_txt)
+        .map_dict(image=preprocess_img, text=preprocess_txt_fn)
         .to_tuple("image", "text")
         .batched(args.batch_size, partial=not is_train or not args.distributed)
     )
@@ -179,12 +195,13 @@ def get_wds_dataset(args, preprocess_img, is_train):
 
     return DataInfo(dataloader, None)
 
-def get_csv_dataset(args, preprocess_fn, is_train):
+def get_csv_dataset(args, preprocess_fn, is_train, tokenize_scheme):
     input_filename = args.train_data if is_train else args.val_data
     assert input_filename
     dataset = CsvDataset(
         input_filename,
         preprocess_fn,
+        tokenize_scheme=tokenize_scheme,
         img_key=args.csv_img_key,
         caption_key=args.csv_caption_key,
         sep=args.csv_separator)
@@ -266,10 +283,10 @@ def get_data(args, preprocess_fns):
     else:
         if args.train_data:
             data["train"] = get_dataset_fn(args.train_data, args.dataset_type)(
-                args, preprocess_train, is_train=True)
+                args, preprocess_train, is_train=True, tokenize_scheme=args.tokenize_scheme)
         if args.val_data:
             data["val"] = get_dataset_fn(args.val_data, args.dataset_type)(
-                args, preprocess_val, is_train=False)
+                args, preprocess_val, is_train=False, tokenize_scheme=args.tokenize_scheme)
 
     if args.imagenet_val is not None:
         data["imagenet-val"] = get_imagenet(args, preprocess_fns, "val")
