@@ -282,6 +282,14 @@ def custom_tokenize(texts: Union[str, List[str]], context_length: int = 77, _tok
 
     return result
 
+def get_tokenize_fn(tokenize_scheme):
+    if tokenize_scheme == "clip":
+        return clip_tokenize
+    elif tokenize_scheme == "custom":
+        return custom_tokenize
+    else:
+        raise NotImplementedError
+
 # Redefine the tokenize function.
 # Deprecated.
 # tokenize = custom_tokenize

@@ -22,10 +22,8 @@ import torchvision.datasets as datasets
 from webdataset.utils import identity
 import webdataset as wds
 
-
-
 from clip.clip import (
-    tokenize, clip_tokenize, custom_tokenize
+    get_tokenize_fn, clip_tokenize, custom_tokenize
 )
 
 
@@ -42,12 +40,7 @@ class CsvDataset(Dataset):
         self.transforms = transforms
         logging.debug('Done loading data.')
 
-        if tokenize_scheme == "clip":
-            self.tokenize_fn = clip_tokenize
-        elif tokenize_scheme == "custom":
-            self.tokenize_fn = clip_tokenize
-        else:
-            raise NotImplementedError
+        self.tokenize_fn = get_tokenize_fn(tokenize_scheme)
 
     def __len__(self):
         return len(self.captions)
@@ -85,12 +78,7 @@ class DataInfo:
     sampler: DistributedSampler
 
 def preprocess_txt(text, tokenize_scheme):
-    if tokenize_scheme == "clip":
-        tokenize_fn = clip_tokenize
-    elif tokenize_scheme == "custom":
-        tokenize_fn = custom_tokenize
-    else:
-        raise NotImplementedError
+    tokenize_fn = get_tokenize_fn(tokenize_scheme)
     return tokenize_fn([str(text)])[0]
 
 def get_dataset_size(shards):
