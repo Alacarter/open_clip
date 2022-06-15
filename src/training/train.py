@@ -101,6 +101,7 @@ def train(model, data, epoch, optimizer, scaler, scheduler, args, tb_writer=None
         optimizer.zero_grad()
 
         images, texts = batch
+        # print("texts", texts)
         # from PIL import Image
         # for i, im in enumerate(images):
         #     img = np.array(im.cpu()).transpose(1, 2, 0)
