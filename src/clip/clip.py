@@ -66,11 +66,15 @@ def _download(url: str, root: str = os.path.expanduser("~/.cache/clip")):
 
     return download_target
 
+
 def _convert_to_rgb(image):
     return image.convert('RGB')
 
-def _transform(n_px: int, is_train: bool, color_jitter: bool, random_erase_prob: float = 0.0):
+
+def _transform(n_px: int, is_train: bool, color_jitter: bool, random_erase_prob: float = 0.0, input_type="Image"):
+    assert input_type in ["Image", "tensor"]
     normalize = Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
+    convert_to_tensor_fns = [_convert_to_rgb, ToTensor()]
     if is_train:
         transforms_list = []
 
@@ -83,11 +87,11 @@ def _transform(n_px: int, is_train: bool, color_jitter: bool, random_erase_prob:
                 hue=0.5
             ))
 
-        transforms_list.extend([
-            RandomResizedCrop(n_px, scale=(0.9, 1.0), interpolation=Image.BICUBIC),
-            _convert_to_rgb,
-            ToTensor(),
-        ])
+        transforms_list.append(
+            RandomResizedCrop(n_px, scale=(0.9, 1.0), interpolation=Image.BICUBIC))
+
+        if input_type == "Image":
+            transforms_list.extend(convert_to_tensor_fns)
 
         if random_erase_prob > 0.0:
             print("random erase is on")
@@ -104,13 +108,16 @@ def _transform(n_px: int, is_train: bool, color_jitter: bool, random_erase_prob:
         print("transforms_list", transforms_list)
         return Compose(transforms_list)
     else:
-        return Compose([
+        transforms_list = [
             Resize(n_px, interpolation=Image.BICUBIC),
-            CenterCrop(n_px),
-            _convert_to_rgb,
-            ToTensor(),
-            normalize,
-        ])
+            CenterCrop(n_px),]
+
+        if input_type == "Image":
+            transforms_list.extend(convert_to_tensor_fns)
+
+        transforms_list.append(normalize)
+        return Compose(transforms_list)
+
 
 def available_models() -> List[str]:
     """Returns the names of available CLIP models"""
