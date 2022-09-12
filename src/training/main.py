@@ -156,10 +156,10 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
         convert_weights(model)
         preprocess_train = _transform(
             model.visual.input_resolution, is_train=True,
-            color_jitter=args.color_jitter, img_erase_prob=args.img_erase_prob)
+            color_jitter=args.color_jitter, random_erase_prob=args.img_erase_prob)
         preprocess_val = _transform(
             model.visual.input_resolution, is_train=False,
-            color_jitter=False, img_erase_prob=0.0)
+            color_jitter=False, random_erase_prob=0.0)
 
     if args.distillation:
         # Does this need to be done for the teacher model?
