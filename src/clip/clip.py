@@ -24,7 +24,7 @@ from .simple_tokenizer import SimpleTokenizer
 
 __all__ = ["available_models", "load", "tokenize"]
 # _tokenizer = _Tokenizer()
-custom_tokenizer = CustomTokenizer()
+custom_tokenizer = None # CustomTokenizer()
 clip_tokenizer = SimpleTokenizer()
 
 _MODELS = {
