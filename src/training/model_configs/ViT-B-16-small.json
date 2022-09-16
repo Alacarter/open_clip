@@ -1,12 +1,12 @@
 {
-    "embed_dim": 256,
+    "embed_dim": 128,
     "image_resolution": 96,
-    "vision_layers": 4,
-    "vision_width": 256,
-    "vision_patch_size": 6,
-    "context_length": 77,
+    "vision_layers": 3,
+    "vision_width": 128,
+    "vision_patch_size": 24,
+    "context_length": 25,
     "vocab_size": 49408,
-    "transformer_width": 64,
+    "transformer_width": 128,
     "transformer_heads": 4,
-    "transformer_layers": 4
+    "transformer_layers": 3
 }
