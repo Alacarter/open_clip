@@ -118,6 +118,9 @@ def parse_args():
         "--save-frequency", type=int, default=1, help="How often to save checkpoints."
     )
     parser.add_argument(
+        "--save-zero-epoch-ckpt", action="store_true", default=False
+    )
+    parser.add_argument(
         "--zeroshot-frequency", type=int, default=2, help="How often to run zero shot."
     )
     parser.add_argument(

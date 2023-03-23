@@ -275,8 +275,9 @@ def main_worker(gpu, ngpus_per_node, log_queue, args):
 
         # Saving checkpoints.
         if args.save_logs and (args.gpu == 0 or (not args.distributed)):
-            if (epoch + 1) == args.epochs or (
-                args.save_frequency > 0 and ((epoch + 1) % args.save_frequency) == 0
+            if ((epoch + 1) == args.epochs
+                or (args.save_frequency > 0 and ((epoch + 1) % args.save_frequency) == 0)
+                or (epoch == 0 and args.save_zero_epoch_ckpt)
             ):
                 torch.save(
                     {
